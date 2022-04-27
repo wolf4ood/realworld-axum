@@ -1,4 +1,4 @@
-use crate::DatabaseError;
+use crate::{DatabaseError, GetUserError};
 use uuid::Uuid;
 
 #[derive(thiserror::Error, Debug)]
@@ -9,6 +9,8 @@ pub enum DeleteCommentError {
         #[source]
         source: DatabaseError,
     },
+    #[error(transparent)]
+    UserNotFound(#[from] GetUserError),
     #[error("User {user_id:?} is not the author of the comment (id: {comment_id:?}).")]
     Forbidden { user_id: Uuid, comment_id: u64 },
     #[error("Something went wrong.")]

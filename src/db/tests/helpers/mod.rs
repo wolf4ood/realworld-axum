@@ -1,41 +1,41 @@
 #![allow(dead_code)]
 
+use realworld_domain::{Article, User};
+
+use realworld_tests::db::Db;
 pub mod generate;
-pub mod test_db;
+use futures::{
+    future::{join_all, BoxFuture},
+    FutureExt,
+};
+use realworld_domain::repositories::Repository;
 
-use realworld_db::models::{Article, NewArticle, NewUser, User};
-use realworld_db::queries::{articles, users};
-use realworld_db::Repo;
-use uuid::Uuid;
+pub async fn create_users(db: &Db, num_users: i32) -> Vec<(User, String)> {
+    let users: Vec<BoxFuture<_>> = (0..num_users).map(|_| create_user(db).boxed()).collect();
 
-pub fn create_users(repo: &Repo, num_users: i32) -> Vec<(User, String)> {
-    (0..num_users).map(|_| create_user(repo)).collect()
+    join_all(users).await
 }
 
-pub fn create_user(repo: &Repo) -> (User, String) {
+pub async fn create_user(db: &Db) -> (User, String) {
     let (sign_up, clear_text_password) = generate::new_user();
-    let new_user = NewUser {
-        username: &sign_up.username,
-        email: &sign_up.email,
-        password: &sign_up.password.hash(),
-        id: Uuid::new_v4(),
-    };
-    (
-        users::insert(&repo, new_user).expect("Failed to create user"),
-        clear_text_password,
-    )
+
+    let user = db.0.sign_up(sign_up).await.expect("Failed to create user");
+
+    (user, clear_text_password)
 }
 
-pub fn create_articles(repo: &Repo, users: Vec<User>) -> Vec<Article> {
-    users
+pub async fn create_articles(repo: &Db, users: Vec<User>) -> Vec<Article> {
+    let articles = users
         .iter()
-        .map(|user| create_article(repo, &user))
-        .collect::<Vec<_>>()
+        .map(|user| create_article(repo, &user).boxed())
+        .collect::<Vec<_>>();
+
+    join_all(articles).await
 }
 
-pub fn create_article(repo: &Repo, user: &User) -> Article {
+pub async fn create_article(repo: &Db, user: &User) -> Article {
     let draft = generate::article_content();
     let author: User = user.to_owned();
-    articles::insert(repo, NewArticle::from((&draft, &author.into())))
-        .expect("Failed to create articles")
+
+    repo.0.publish_article(draft, &author).await.unwrap()
 }

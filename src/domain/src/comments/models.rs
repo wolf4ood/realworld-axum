@@ -15,12 +15,14 @@ pub struct Comment {
 }
 
 impl Comment {
-    pub fn view(
+    pub async fn view(
         self,
         viewer: &User,
         repository: &impl Repository,
     ) -> Result<CommentView, DatabaseError> {
-        let author_view = repository.get_profile_view(viewer, &self.author.username)?;
+        let author_view = repository
+            .get_profile_view(viewer, &self.author.username)
+            .await?;
         let view = CommentView {
             id: self.id,
             author: author_view,

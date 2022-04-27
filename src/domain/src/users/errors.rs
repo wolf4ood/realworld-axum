@@ -15,6 +15,11 @@ pub enum GetUserError {
         user_id: Uuid,
         source: DatabaseError,
     },
+    #[error("There is no user with suername {username:?}.")]
+    NotFoundByUsername {
+        username: String,
+        source: DatabaseError,
+    },
     #[error("Something went wrong.")]
     DatabaseError(#[from] DatabaseError),
 }

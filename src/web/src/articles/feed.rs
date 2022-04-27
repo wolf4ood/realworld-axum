@@ -1,9 +1,10 @@
-use crate::articles::responses::ArticlesResponse;
-use crate::middleware::ContextExt;
-use crate::{Context, ErrorResponse};
+use axum::{extract::Query, Extension, Json};
 use domain::repositories::Repository;
 use serde::{Deserialize, Serialize};
-use tide::{Request, Response};
+
+use crate::{context::ApplicationContext, errors::ApiResult, extractor::User};
+
+use super::responses::ArticlesResponse;
 
 #[derive(Serialize, Deserialize)]
 pub struct FeedQuery {
@@ -32,17 +33,15 @@ impl From<FeedQuery> for domain::FeedQuery {
     }
 }
 
-pub async fn feed<R: 'static + Repository + Sync + Send>(
-    cx: Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    // This can be avoided once https://github.com/http-rs/tide/pull/384 gets merged
-    let query = cx.query::<FeedQuery>().unwrap_or_default();
-    let repository = &cx.state().repository;
+pub async fn feed(
+    ctx: Extension<ApplicationContext>,
+    user: User,
+    Query(query): Query<FeedQuery>,
+) -> ApiResult<Json<ArticlesResponse>> {
+    let user = ctx.repo().get_user_by_id(user.user_id()).await?;
 
-    let user_id = cx.get_claims().map_err(|_| Response::new(401))?.user_id();
-    let user = repository.get_user_by_id(user_id)?;
-
-    let articles = user.feed(query.into(), repository)?;
+    let articles = user.feed(query.into(), ctx.repo()).await?;
     let response = ArticlesResponse::from(articles);
-    Ok(Response::new(200).body_json(&response).unwrap())
+
+    Ok(response.into())
 }

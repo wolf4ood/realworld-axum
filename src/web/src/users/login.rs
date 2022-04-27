@@ -1,10 +1,10 @@
-use super::responses::UserResponse;
-use crate::{Context, ErrorResponse};
+use axum::{Extension, Json};
 use serde::Deserialize;
 
-use crate::auth::encode_token;
+use crate::{auth::encode_token, context::ApplicationContext, errors::ApiResult};
 use domain::repositories::Repository;
-use tide::{Request, Response};
+
+use super::responses::UserResponse;
 
 #[derive(Deserialize)]
 pub struct AuthRequest {
@@ -17,20 +17,17 @@ pub struct AuthUser {
     password: String,
 }
 
-pub async fn login<R: 'static + Repository + Sync + Send>(
-    mut cx: Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    let user = cx
-        .body_json::<AuthRequest>()
-        .await
-        .map_err(|_| Response::new(400))?
-        .user;
-    let repository = &cx.state().repository;
-
-    let logged_in_user = repository.get_user_by_email_and_password(&user.email, &user.password)?;
+pub async fn login(
+    ctx: Extension<ApplicationContext>,
+    request: Json<AuthRequest>,
+) -> ApiResult<Json<UserResponse>> {
+    let logged_in_user = ctx
+        .repo()
+        .get_user_by_email_and_password(&request.user.email, &request.user.password)
+        .await?;
     let token = encode_token(logged_in_user.id);
 
     let response = UserResponse::from((logged_in_user, token));
 
-    Ok(Response::new(200).body_json(&response).unwrap())
+    Ok(response.into())
 }

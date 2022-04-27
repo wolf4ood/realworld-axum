@@ -33,8 +33,11 @@ pub struct Article {
 }
 
 impl Article {
-    pub fn comments(&self, repository: &impl Repository) -> Result<Vec<Comment>, DatabaseError> {
-        repository.get_comments(&self)
+    pub async fn comments(
+        &self,
+        repository: &impl Repository,
+    ) -> Result<Vec<Comment>, DatabaseError> {
+        repository.get_comments(self).await
     }
 }
 

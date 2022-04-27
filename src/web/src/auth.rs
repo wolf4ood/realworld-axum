@@ -1,9 +1,9 @@
-use http::HeaderMap;
+use axum::http::HeaderMap;
 use jsonwebtoken::{decode, encode, Header, Validation};
-use log::debug;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::debug;
 use uuid::Uuid;
 
 // TODO: get the secret from config
@@ -54,7 +54,7 @@ pub fn extract_token(headers: &HeaderMap) -> Option<&str> {
 
 pub fn extract_claims(headers: &HeaderMap) -> Option<Claims> {
     extract_token(headers).and_then(|token| {
-        let decoded = decode::<Claims>(&token, SECRET.as_ref(), &validation());
+        let decoded = decode::<Claims>(token, SECRET.as_ref(), &validation());
         if let Err(e) = &decoded {
             debug!("Failed to decode token {}", e);
         }

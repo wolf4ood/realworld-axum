@@ -1,17 +1,37 @@
-use crate::models::{Article, Comment, NewArticle, UpdateArticle, UpdateUser, User};
+use realworld_domain::{Profile, User};
 
-pub fn to_article(a: Article, u: domain::User, n_fav: u64) -> domain::Article {
-    let metadata = domain::ArticleMetadata {
-        created_at: a.created_at,
-        updated_at: a.updated_at,
+impl From<crate::entity::users::Model> for User {
+    fn from(user: crate::entity::users::Model) -> Self {
+        User {
+            id: user.id,
+            email: user.email,
+            profile: Profile {
+                username: user.username,
+                bio: user.bio,
+                image: user.image,
+            },
+        }
+    }
+}
+
+pub fn to_article(
+    a: crate::entity::articles::Model,
+    u: realworld_domain::User,
+    n_fav: u64,
+) -> realworld_domain::Article {
+    let metadata = realworld_domain::ArticleMetadata {
+        created_at: a.created_at.into(),
+        updated_at: a.updated_at.into(),
     };
-    let content = domain::ArticleContent {
+    let content = realworld_domain::ArticleContent {
         title: a.title,
         description: a.description,
         body: a.body,
-        tag_list: a.tag_list,
+        // TODO Not supported now
+        // tag_list: a.tag_list,
+        tag_list: vec![],
     };
-    domain::Article {
+    realworld_domain::Article {
         content,
         slug: a.slug,
         author: u.profile,
@@ -19,73 +39,21 @@ pub fn to_article(a: Article, u: domain::User, n_fav: u64) -> domain::Article {
         favorites_count: n_fav,
     }
 }
-
-impl From<User> for domain::User {
-    fn from(u: User) -> Self {
-        domain::User {
-            id: u.id,
-            email: u.email,
-            profile: domain::Profile {
-                username: u.username,
-                bio: u.bio,
-                image: u.image,
-            },
-        }
-    }
-}
-
-impl From<User> for domain::Profile {
-    fn from(u: User) -> Self {
-        domain::Profile {
+impl From<crate::entity::users::Model> for Profile {
+    fn from(u: crate::entity::users::Model) -> Self {
+        Profile {
             username: u.username,
             bio: u.bio,
             image: u.image,
         }
     }
 }
-
-pub fn to_comment(c: Comment, u: User) -> domain::Comment {
-    domain::Comment {
+pub fn to_comment(c: crate::entity::comments::Model, u: User) -> realworld_domain::Comment {
+    realworld_domain::Comment {
         id: c.id as u64,
-        author: domain::Profile::from(u),
+        author: u.profile,
         body: c.body,
-        created_at: c.created_at,
-        updated_at: c.updated_at,
-    }
-}
-
-impl<'a> From<(&'a domain::ArticleContent, &'a domain::User)> for NewArticle<'a> {
-    fn from(x: (&'a domain::ArticleContent, &'a domain::User)) -> Self {
-        let (draft, author) = x;
-        Self {
-            title: &draft.title,
-            slug: draft.slug(),
-            description: &draft.description,
-            body: &draft.body,
-            tag_list: draft.tag_list.to_owned(),
-            user_id: author.id.to_owned(),
-        }
-    }
-}
-
-impl<'a> From<&'a domain::ArticleUpdate> for UpdateArticle<'a> {
-    fn from(update: &'a domain::ArticleUpdate) -> Self {
-        Self {
-            title: update.title.as_deref(),
-            description: update.description.as_deref(),
-            body: update.body.as_deref(),
-        }
-    }
-}
-
-impl<'a> From<&'a domain::UserUpdate> for UpdateUser<'a> {
-    fn from(u: &'a domain::UserUpdate) -> Self {
-        Self {
-            email: u.email.as_deref(),
-            username: u.username.as_deref(),
-            password: u.password.as_ref().map(|p| p.hash().to_owned()),
-            image: u.image.as_deref(),
-            bio: u.bio.as_deref(),
-        }
+        created_at: c.created_at.into(),
+        updated_at: c.updated_at.into(),
     }
 }

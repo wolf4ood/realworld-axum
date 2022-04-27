@@ -1,9 +1,10 @@
-use crate::articles::responses::ArticleResponse;
-use crate::middleware::ContextExt;
-use crate::{Context, ErrorResponse};
+use axum::{Extension, Json};
 use domain::repositories::Repository;
 use serde::{Deserialize, Serialize};
-use tide::Response;
+
+use crate::{context::ApplicationContext, errors::ApiResult, extractor::User};
+
+use super::responses::ArticleResponse;
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -26,25 +27,18 @@ impl From<NewArticleRequest> for domain::ArticleContent {
             title: a.title,
             description: a.description,
             body: a.body,
-            tag_list: a.tag_list.unwrap_or_else(Vec::new),
+            tag_list: a.tag_list.unwrap_or_default(),
         }
     }
 }
 
-pub async fn insert_article<R: 'static + Repository + Sync + Send>(
-    mut cx: tide::Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    let request: Request = cx
-        .body_json()
-        .await
-        .map_err(|e| Response::new(400).body_string(e.to_string()))?;
-    let author_id = cx.get_claims().map_err(|_| Response::new(401))?.user_id();
-    let repository = &cx.state().repository;
+pub async fn insert_article(
+    ctx: Extension<ApplicationContext>,
+    user: User,
+    request: Json<Request>,
+) -> ApiResult<Json<ArticleResponse>> {
+    let author = ctx.repo().get_user_by_id(user.user_id()).await?;
+    let published_article = author.publish(request.0.article.into(), ctx.repo()).await?;
 
-    let author = repository.get_user_by_id(author_id)?;
-    let published_article = author.publish(request.article.into(), repository)?;
-
-    Ok(Response::new(200)
-        .body_json(&ArticleResponse::from(published_article))
-        .unwrap())
+    Ok(ArticleResponse::from(published_article).into())
 }

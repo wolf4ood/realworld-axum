@@ -1,10 +1,10 @@
-use crate::articles::responses::ArticleResponse;
-use crate::middleware::ContextExt;
-use crate::{Context, ErrorResponse};
-use domain::repositories::Repository;
-use domain::ArticleUpdate;
+use axum::{extract::Path, Extension, Json};
+use domain::{repositories::Repository, ArticleUpdate};
 use serde::{Deserialize, Serialize};
-use tide::Response;
+
+use crate::{context::ApplicationContext, errors::ApiResult, extractor::User};
+
+use super::responses::ArticleResponse;
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -30,21 +30,23 @@ impl From<Request> for ArticleUpdate {
     }
 }
 
-pub async fn update_article<R: 'static + Repository + Sync + Send>(
-    mut cx: tide::Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    let request: Request = cx
-        .body_json()
-        .await
-        .map_err(|e| Response::new(400).body_string(e.to_string()))?;
-    let slug: String = cx.param("slug").map_err(|_| Response::new(401))?;
-    let user_id = cx.get_claims().map_err(|_| Response::new(401))?.user_id();
-    let repository = &cx.state().repository;
+pub async fn update_article(
+    ctx: Extension<ApplicationContext>,
+    user: User,
+    Path(slug): Path<String>,
+    request: Json<Request>,
+) -> ApiResult<Json<ArticleResponse>> {
+    let article = ctx.repo().get_article_by_slug(&slug).await?;
+    let user = ctx.repo().get_user_by_id(user.user_id()).await?;
+    let updated_article = user
+        .update_article(article, request.0.into(), ctx.repo())
+        .await?;
 
-    let article = repository.get_article_by_slug(&slug)?;
-    let user = repository.get_user_by_id(user_id)?;
-    let updated_article = user.update_article(article, request.into(), repository)?;
+    let response: ArticleResponse = ctx
+        .repo()
+        .get_article_view(&user, updated_article)
+        .await?
+        .into();
 
-    let response: ArticleResponse = repository.get_article_view(&user, updated_article)?.into();
-    Ok(Response::new(200).body_json(&response).unwrap())
+    Ok(response.into())
 }

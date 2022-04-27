@@ -1,11 +1,11 @@
-use super::responses::UserResponse;
-use crate::auth::encode_token;
-use crate::{Context, ErrorResponse};
-use domain::repositories::Repository;
-use domain::SignUp;
+use axum::{Extension, Json};
+use domain::{repositories::Repository, SignUp};
 use serde::Deserialize;
 use std::convert::{TryFrom, TryInto};
-use tide::{Request, Response};
+
+use crate::{auth::encode_token, context::ApplicationContext, errors::ApiResult};
+
+use super::responses::UserResponse;
 
 #[derive(Deserialize, Debug)]
 pub struct RegistrationRequest {
@@ -32,19 +32,13 @@ impl TryFrom<RegistrationRequest> for SignUp {
     }
 }
 
-pub async fn register<R: 'static + Repository + Sync + Send>(
-    mut cx: Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    let registration: RegistrationRequest = cx
-        .body_json()
-        .await
-        .map_err(|e| Response::new(400).body_string(e.to_string()))?;
-    let repository = &cx.state().repository;
-
-    let sign_up: SignUp = registration.try_into()?;
-    let new_user = repository.sign_up(sign_up)?;
+pub async fn register(
+    ctx: Extension<ApplicationContext>,
+    request: Json<RegistrationRequest>,
+) -> ApiResult<Json<UserResponse>> {
+    let sign_up: SignUp = request.0.try_into()?;
+    let new_user = ctx.repo().sign_up(sign_up).await?;
     let token = encode_token(new_user.id);
 
-    let response = UserResponse::from((new_user, token));
-    Ok(Response::new(200).body_json(&response).unwrap())
+    Ok(UserResponse::from((new_user, token)).into())
 }

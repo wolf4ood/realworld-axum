@@ -1,20 +1,19 @@
-use crate::{Context, ErrorResponse};
+use axum::{Extension, Json};
 use domain::repositories::Repository;
 use serde::{Deserialize, Serialize};
-use tide::{Request, Response};
+
+use crate::{context::ApplicationContext, errors::ApiResult};
 
 #[derive(Serialize, Deserialize)]
 pub struct TagsResponse {
     pub tags: Vec<String>,
 }
 
-pub async fn tags<R: 'static + Repository + Sync + Send>(
-    cx: Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    let repository = &cx.state().repository;
-    let tags = repository.get_tags()?;
+pub async fn tags(ctx: Extension<ApplicationContext>) -> ApiResult<Json<TagsResponse>> {
+    let tags = ctx.repo().get_tags().await?;
     let response = TagsResponse {
         tags: tags.into_iter().collect(),
     };
-    Ok(Response::new(200).body_json(&response).unwrap())
+
+    Ok(response.into())
 }

@@ -1,42 +1,44 @@
-use crate::middleware::ContextExt;
-use crate::{Context, ErrorResponse};
-
-use crate::profiles::responses::ProfileResponse;
+use crate::{
+    context::ApplicationContext, errors::ApiResult, extractor::User,
+    profiles::responses::ProfileResponse,
+};
+use axum::{extract::Path, Extension, Json};
 use domain::repositories::Repository;
-use tide::{Request, Response};
 
 pub enum Action {
     Follow,
     Unfollow,
 }
 
-pub async fn follow<R: 'static + Repository + Sync + Send>(
-    cx: Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    _follow(cx, Action::Follow).await
+pub async fn follow(
+    ctx: Extension<ApplicationContext>,
+    user: User,
+    Path(username): Path<String>,
+) -> ApiResult<Json<ProfileResponse>> {
+    _follow(&ctx.0, &user, &username, Action::Follow).await
+}
+pub async fn unfollow(
+    ctx: Extension<ApplicationContext>,
+    user: User,
+    Path(username): Path<String>,
+) -> ApiResult<Json<ProfileResponse>> {
+    _follow(&ctx.0, &user, &username, Action::Unfollow).await
 }
 
-pub async fn unfollow<R: 'static + Repository + Sync + Send>(
-    cx: Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    _follow(cx, Action::Unfollow).await
-}
-
-async fn _follow<R: 'static + Repository + Sync + Send>(
-    cx: Request<Context<R>>,
+async fn _follow(
+    ctx: &ApplicationContext,
+    user: &User,
+    username: &str,
     action: Action,
-) -> Result<Response, ErrorResponse> {
-    let user_id = cx.get_claims().map_err(|_| Response::new(401))?.user_id();
-    let profile_username: String = cx.param("username").map_err(|_| Response::new(400))?;
-    let repository = &cx.state().repository;
-
-    let user = repository.get_user_by_id(user_id)?;
-    let profile = repository.get_profile(&profile_username)?;
+) -> ApiResult<Json<ProfileResponse>> {
+    let user = ctx.repo().get_user_by_id(user.user_id()).await?;
+    let profile = ctx.repo().get_profile(username).await?;
     let view = match action {
-        Action::Follow => user.follow(profile, repository)?,
-        Action::Unfollow => user.unfollow(profile, repository)?,
+        Action::Follow => user.follow(profile, ctx.repo()).await?,
+        Action::Unfollow => user.unfollow(profile, ctx.repo()).await?,
     };
 
     let response = ProfileResponse::from(view);
-    Ok(Response::new(200).body_json(&response).unwrap())
+
+    Ok(response.into())
 }

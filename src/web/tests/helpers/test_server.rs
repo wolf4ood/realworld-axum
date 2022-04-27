@@ -1,35 +1,39 @@
+use std::path::PathBuf;
+
+use application::configuration::Settings;
+use axum::http::Request;
+use axum::response::Response;
+use axum::Router;
 use realworld_web::get_app;
 use realworld_web::users::responses::UserResponse;
 
-use crate::helpers::test_db::{clean_db, get_repo};
-use async_std::io::prelude::ReadExt;
-use db::Repository;
 use domain::articles::ArticleQuery;
 use domain::SignUp;
-use http_service::Response;
-use http_service_mock::{make_server, TestBackend};
 use realworld_web::articles::responses::{ArticleResponse, ArticlesResponse};
 use realworld_web::comments::responses::{CommentResponse, CommentsResponse};
 use realworld_web::profiles::responses::ProfileResponse;
-use realworld_web::Context;
 use serde::de::DeserializeOwned;
 use serde_json::json;
-use tide::server::Service;
+use tower::ServiceExt;
 
-pub type TestServer = TestBackend<Service<Context<Repository>>>;
+use super::test_db::Db;
 
 pub struct TestApp {
-    pub server: TestServer,
-    pub repository: Repository,
+    pub server: Router,
+    pub repository: Db,
+}
+pub async fn test_db(name: &str) -> Db {
+    let settings = Settings::new(PathBuf::from("../../")).expect("Failed to load configuration");
+    Db::create(settings.database, name).await
 }
 
 impl TestApp {
-    pub fn new() -> Self {
-        let app = get_app(get_repo());
-        let server = make_server(app.into_http_service()).unwrap();
+    pub async fn create(name: &str) -> Self {
+        let db = test_db(name).await;
+        let app = get_app(db.0.clone());
         Self {
-            server,
-            repository: get_repo(),
+            server: app,
+            repository: db,
         }
     }
 
@@ -40,8 +44,10 @@ impl TestApp {
     ) -> Result<UserResponse, Response> {
         let response = self
             .server
-            .simulate(
-                http::Request::post("/api/users")
+            .clone()
+            .oneshot(
+                Request::post("/api/users")
+                    .header("Content-Type", "application/json")
                     .body(
                         json!({
                             "user": {
@@ -56,6 +62,7 @@ impl TestApp {
                     )
                     .unwrap(),
             )
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -67,8 +74,10 @@ impl TestApp {
     ) -> Result<UserResponse, Response> {
         let response = self
             .server
-            .simulate(
-                http::Request::post("/api/users/login")
+            .clone()
+            .oneshot(
+                Request::post("/api/users/login")
+                    .header("Content-Type", "application/json")
                     .body(
                         json!({
                             "user": {
@@ -82,6 +91,7 @@ impl TestApp {
                     )
                     .unwrap(),
             )
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -90,12 +100,14 @@ impl TestApp {
         let auth_header = format!("token: {}", token);
         let response = self
             .server
-            .simulate(
-                http::Request::get("/api/user")
+            .clone()
+            .oneshot(
+                Request::get("/api/user")
                     .header("Authorization", auth_header)
-                    .body(http_service::Body::empty())
+                    .body("".into())
                     .unwrap(),
             )
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -107,12 +119,15 @@ impl TestApp {
     ) -> Result<UserResponse, Response> {
         let response = self
             .server
-            .simulate(
-                http::Request::put("/api/user")
+            .clone()
+            .oneshot(
+                Request::put("/api/user")
                     .header("Authorization", format!("token: {}", token))
+                    .header("Content-Type", "application/json")
                     .body(serde_json::to_string(details).unwrap().into_bytes().into())
                     .unwrap(),
             )
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -126,13 +141,17 @@ impl TestApp {
         let auth_header = format!("token: {}", token);
         let response = self
             .server
-            .simulate(
-                http::Request::post("/api/articles")
+            .clone()
+            .oneshot(
+                Request::post("/api/articles")
                     .header("Authorization", auth_header)
+                    .header("Content-Type", "application/json")
                     .body(body.into_bytes().into())
                     .unwrap(),
             )
+            .await
             .unwrap();
+
         response_json_if_success(response).await
     }
 
@@ -147,12 +166,15 @@ impl TestApp {
         let auth_header = format!("token: {}", token);
         let response = self
             .server
-            .simulate(
-                http::Request::put(url)
+            .clone()
+            .oneshot(
+                Request::put(url)
                     .header("Authorization", auth_header)
+                    .header("Content-Type", "application/json")
                     .body(body.into_bytes().into())
                     .unwrap(),
             )
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -165,11 +187,9 @@ impl TestApp {
         let url = format!("/api/articles?{}", query_string);
         let response = self
             .server
-            .simulate(
-                http::Request::get(url)
-                    .body(http_service::Body::empty())
-                    .unwrap(),
-            )
+            .clone()
+            .oneshot(Request::get(url).body("".into()).unwrap())
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -183,16 +203,14 @@ impl TestApp {
         let request = match token {
             Some(token) => {
                 let auth_header = format!("token: {}", token);
-                http::Request::get(url)
+                Request::get(url)
                     .header("Authorization", auth_header)
-                    .body(http_service::Body::empty())
+                    .body("".into())
                     .unwrap()
             }
-            None => http::Request::get(url)
-                .body(http_service::Body::empty())
-                .unwrap(),
+            None => Request::get(url).body("".into()).unwrap(),
         };
-        let response = self.server.simulate(request).unwrap();
+        let response = self.server.clone().oneshot(request).await.unwrap();
         response_json_if_success(response).await
     }
 
@@ -201,12 +219,14 @@ impl TestApp {
         let auth_header = format!("token: {}", token);
         let response = self
             .server
-            .simulate(
-                http::Request::delete(url)
+            .clone()
+            .oneshot(
+                Request::delete(url)
                     .header("Authorization", auth_header)
-                    .body(http_service::Body::empty())
+                    .body("".into())
                     .unwrap(),
             )
+            .await
             .unwrap();
         if response.status().is_success() {
             Ok(())
@@ -224,12 +244,14 @@ impl TestApp {
         let auth_header = format!("token: {}", token);
         let response = self
             .server
-            .simulate(
-                http::Request::post(url)
+            .clone()
+            .oneshot(
+                Request::post(url)
                     .header("Authorization", auth_header)
-                    .body(http_service::Body::empty())
+                    .body("".into())
                     .unwrap(),
             )
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -243,12 +265,14 @@ impl TestApp {
         let auth_header = format!("token: {}", token);
         let response = self
             .server
-            .simulate(
-                http::Request::delete(url)
+            .clone()
+            .oneshot(
+                Request::delete(url)
                     .header("Authorization", auth_header)
-                    .body(http_service::Body::empty())
+                    .body("".into())
                     .unwrap(),
             )
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -262,16 +286,14 @@ impl TestApp {
         let request = match token {
             Some(token) => {
                 let auth_header = format!("token: {}", token);
-                http::Request::get(url)
+                Request::get(url)
                     .header("Authorization", auth_header)
-                    .body(http_service::Body::empty())
+                    .body("".into())
                     .unwrap()
             }
-            None => http::Request::get(url)
-                .body(http_service::Body::empty())
-                .unwrap(),
+            None => Request::get(url).body("".into()).unwrap(),
         };
-        let response = self.server.simulate(request).unwrap();
+        let response = self.server.clone().oneshot(request).await.unwrap();
         response_json_if_success(response).await
     }
 
@@ -284,12 +306,14 @@ impl TestApp {
         let auth_header = format!("token: {}", token);
         let response = self
             .server
-            .simulate(
-                http::Request::post(url)
+            .clone()
+            .oneshot(
+                Request::post(url)
                     .header("Authorization", auth_header)
-                    .body(http_service::Body::empty())
+                    .body("".into())
                     .unwrap(),
             )
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -303,12 +327,14 @@ impl TestApp {
         let auth_header = format!("token: {}", token);
         let response = self
             .server
-            .simulate(
-                http::Request::delete(url)
+            .clone()
+            .oneshot(
+                Request::delete(url)
                     .header("Authorization", auth_header)
-                    .body(http_service::Body::empty())
+                    .body("".into())
                     .unwrap(),
             )
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -322,16 +348,14 @@ impl TestApp {
         let request = match token {
             Some(token) => {
                 let auth_header = format!("token: {}", token);
-                http::Request::get(url)
+                Request::get(url)
                     .header("Authorization", auth_header)
-                    .body(http_service::Body::empty())
+                    .body("".into())
                     .unwrap()
             }
-            None => http::Request::get(url)
-                .body(http_service::Body::empty())
-                .unwrap(),
+            None => Request::get(url).body("".into()).unwrap(),
         };
-        let response = self.server.simulate(request).unwrap();
+        let response = self.server.clone().oneshot(request).await.unwrap();
         response_json_if_success(response).await
     }
 
@@ -346,12 +370,15 @@ impl TestApp {
         let body = serde_json::to_string(comment).unwrap();
         let response = self
             .server
-            .simulate(
-                http::Request::post(url)
+            .clone()
+            .oneshot(
+                Request::post(url)
                     .header("Authorization", auth_header)
+                    .header("Content-Type", "application/json")
                     .body(body.into_bytes().into())
                     .unwrap(),
             )
+            .await
             .unwrap();
         response_json_if_success(response).await
     }
@@ -366,12 +393,14 @@ impl TestApp {
         let auth_header = format!("token: {}", token);
         let response = self
             .server
-            .simulate(
-                http::Request::delete(url)
+            .clone()
+            .oneshot(
+                Request::delete(url)
                     .header("Authorization", auth_header)
-                    .body(http_service::Body::empty())
+                    .body("".into())
                     .unwrap(),
             )
+            .await
             .unwrap();
         if response.status().is_success() {
             Ok(())
@@ -382,10 +411,7 @@ impl TestApp {
 }
 
 impl std::ops::Drop for TestApp {
-    fn drop(&mut self) {
-        println!("Cleaning");
-        clean_db(&self.repository)
-    }
+    fn drop(&mut self) {}
 }
 
 pub async fn response_json_if_success<T: DeserializeOwned>(
@@ -398,11 +424,8 @@ pub async fn response_json_if_success<T: DeserializeOwned>(
     }
 }
 
-pub async fn response_json<T: DeserializeOwned>(mut res: Response) -> T {
-    let mut body = String::new();
-    res.body_mut()
-        .read_to_string(&mut body)
-        .await
-        .expect("Failed to read body.");
-    serde_json::from_str(&body).expect("Could not parse body.")
+pub async fn response_json<T: DeserializeOwned>(res: Response) -> T {
+    let body = hyper::body::to_bytes(res.into_body()).await.unwrap();
+
+    serde_json::from_slice(&body).expect("Could not parse body.")
 }

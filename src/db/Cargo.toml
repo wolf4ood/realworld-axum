@@ -1,23 +1,30 @@
 [package]
 name = "realworld-db"
 version = "0.1.0"
-authors = ["colinbankier <colinbankier@gmail.com>", "LukeMathWalker <rust@lpalmieri.com>"]
-edition = "2018"
+edition = "2021"
 
-[lib]
-name = "realworld_db"
-path = "src/lib.rs"
 
 [dependencies]
-diesel = { version = "1.4", features = ["postgres", "extras", "uuidv07"] }
-r2d2 = "0.8"
-serde = { version= "1", features = ["derive"] }
+realworld-domain = { package = "realworld-domain", path = "../domain" }
+async-trait = "0.1"
+uuid = { version = "0.8", features = ["serde", "v4"] }
 chrono = { version = "0.4.6", features = ["serde"] }
-uuid = { version = "0.7.4", features = ["serde", "v4"] }
-domain = { package = "realworld-domain", path = "../domain" }
+tracing = "0.1"
 anyhow = "1.0.26"
+sqlx = {version= "0.5.13", features = ["any"]}
+
+[dependencies.sea-orm]
+version = "^0.7.0"
+features = [
+  "macros",
+  "debug-print",
+  "runtime-tokio-native-tls",
+  "sqlx-postgres",
+]
+
 
 [dev-dependencies]
-application = { package = "realworld-application", path = "../application"}
 fake = "1.2.2"
-log = "*"
+tokio = { version = "1.0", features = ["full"] }
+realworld-tests = { package = "realworld-tests", path = "../tests" }
+futures= "0.3"

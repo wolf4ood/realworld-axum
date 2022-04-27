@@ -66,15 +66,15 @@ pub struct UserUpdate {
 }
 
 impl User {
-    pub fn publish(
+    pub async fn publish(
         &self,
         draft: ArticleContent,
         repository: &impl Repository,
     ) -> Result<Article, PublishArticleError> {
-        repository.publish_article(draft, &self)
+        repository.publish_article(draft, self).await
     }
 
-    pub fn update_article(
+    pub async fn update_article(
         &self,
         article: Article,
         update: ArticleUpdate,
@@ -86,19 +86,19 @@ impl User {
                 user_id: self.id,
             });
         }
-        let updated_article = repository.update_article(article, update)?;
+        let updated_article = repository.update_article(article, update).await?;
         Ok(updated_article)
     }
 
-    pub fn update(
+    pub async fn update(
         self,
         update: UserUpdate,
         repository: &impl Repository,
     ) -> Result<Self, DatabaseError> {
-        Ok(repository.update_user(self, update)?)
+        repository.update_user(self, update).await
     }
 
-    pub fn delete(
+    pub async fn delete(
         &self,
         article: Article,
         repository: &impl Repository,
@@ -110,16 +110,16 @@ impl User {
                 user_id: self.id,
             });
         }
-        Ok(repository.delete_article(&article)?)
+        Ok(repository.delete_article(&article).await?)
     }
 
-    pub fn comment(
+    pub async fn comment(
         &self,
         article: &Article,
         comment: CommentContent,
         repository: &impl Repository,
     ) -> Result<CommentView, ChangeArticleError> {
-        let posted_comment = repository.comment_article(&self, &article, comment)?;
+        let posted_comment = repository.comment_article(self, article, comment).await?;
         let view = CommentView {
             id: posted_comment.id,
             author: ProfileView {
@@ -135,7 +135,7 @@ impl User {
         Ok(view)
     }
 
-    pub fn delete_comment(
+    pub async fn delete_comment(
         &self,
         comment: Comment,
         repository: &impl Repository,
@@ -148,22 +148,24 @@ impl User {
             });
         }
 
-        Ok(repository.delete_comment(comment.id)?)
+        repository.delete_comment(comment.id).await
     }
 
-    pub fn favorite(
+    pub async fn favorite(
         &self,
         article: Article,
-        repository: &(impl Repository + Repository),
+        repository: &impl Repository,
     ) -> Result<ArticleView, DatabaseError> {
-        let n_favorites = match repository.favorite(&article, self)? {
+        let n_favorites = match repository.favorite(&article, self).await? {
             FavoriteOutcome::NewFavorite => article.favorites_count + 1,
             FavoriteOutcome::AlreadyAFavorite => article.favorites_count,
         };
         let article_view = ArticleView {
             content: article.content,
             slug: article.slug,
-            author: repository.get_profile_view(self, &article.author.username)?,
+            author: repository
+                .get_profile_view(self, &article.author.username)
+                .await?,
             metadata: article.metadata,
             favorited: true,
             favorites_count: n_favorites,
@@ -172,19 +174,21 @@ impl User {
         Ok(article_view)
     }
 
-    pub fn unfavorite(
+    pub async fn unfavorite(
         &self,
         article: Article,
-        repository: &(impl Repository + Repository),
+        repository: &impl Repository,
     ) -> Result<ArticleView, DatabaseError> {
-        let n_favorites = match repository.unfavorite(&article, self)? {
+        let n_favorites = match repository.unfavorite(&article, self).await? {
             UnfavoriteOutcome::WasAFavorite => article.favorites_count - 1,
             UnfavoriteOutcome::WasNotAFavorite => article.favorites_count,
         };
         let article_view = ArticleView {
             content: article.content,
             slug: article.slug,
-            author: repository.get_profile_view(self, &article.author.username)?,
+            author: repository
+                .get_profile_view(self, &article.author.username)
+                .await?,
             metadata: article.metadata,
             favorited: false,
             favorites_count: n_favorites,
@@ -193,12 +197,12 @@ impl User {
         Ok(article_view)
     }
 
-    pub fn follow(
+    pub async fn follow(
         &self,
         p: Profile,
         repository: &impl Repository,
     ) -> Result<ProfileView, DatabaseError> {
-        repository.follow(self, &p)?;
+        repository.follow(self, &p).await?;
         let view = ProfileView {
             profile: p,
             following: true,
@@ -207,12 +211,12 @@ impl User {
         Ok(view)
     }
 
-    pub fn unfollow(
+    pub async fn unfollow(
         &self,
         p: Profile,
         repository: &impl Repository,
     ) -> Result<ProfileView, DatabaseError> {
-        repository.unfollow(self, &p)?;
+        repository.unfollow(self, &p).await?;
         let view = ProfileView {
             profile: p,
             following: false,
@@ -221,12 +225,12 @@ impl User {
         Ok(view)
     }
 
-    pub fn feed(
+    pub async fn feed(
         &self,
         query: FeedQuery,
         repository: &impl Repository,
     ) -> Result<Vec<ArticleView>, DatabaseError> {
-        Ok(repository.feed(&self, query)?)
+        repository.feed(self, query).await
     }
 }
 

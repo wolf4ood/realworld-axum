@@ -1,0 +1,18 @@
+[package]
+name = "realworld-tests"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+realworld-db = { package = "realworld-db", path = "../db" }
+realworld-application = { package = "realworld-application", path = "../application"}
+
+[dependencies.sea-orm]
+version = "^0.7.0"
+features = [
+  "macros",
+  "debug-print",
+  "runtime-tokio-native-tls",
+  "sqlx-postgres",
+]

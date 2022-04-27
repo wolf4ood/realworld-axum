@@ -1,19 +1,28 @@
-use crate::articles::responses::ArticleResponse;
-use crate::middleware::ContextExt;
-use crate::{Context, ErrorResponse};
+use axum::{extract::Path, Extension, Json};
 use domain::repositories::Repository;
-use tide::{Request, Response};
 
-pub async fn favorite<R: 'static + Repository + Sync + Send>(
-    cx: Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    _favorite(cx, Action::Favorite).await
+use super::responses::ArticleResponse;
+use crate::{context::ApplicationContext, errors::ApiResult, extractor::User};
+
+// pub async fn favorite<R: 'static + Repository + Sync + Send>(
+//     cx: Request<Context<R>>,
+// ) -> Result<Response, ErrorResponse> {
+//     _favorite(cx, Action::Favorite).await
+// }
+
+pub async fn favorite(
+    ctx: Extension<ApplicationContext>,
+    Path(slug): Path<String>,
+    user: User,
+) -> ApiResult<Json<ArticleResponse>> {
+    _favorite(&ctx, &user, &slug, Action::Favorite).await
 }
-
-pub async fn unfavorite<R: 'static + Repository + Sync + Send>(
-    cx: Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    _favorite(cx, Action::Unfavorite).await
+pub async fn unfavorite(
+    ctx: Extension<ApplicationContext>,
+    Path(slug): Path<String>,
+    user: User,
+) -> ApiResult<Json<ArticleResponse>> {
+    _favorite(&ctx, &user, &slug, Action::Unfavorite).await
 }
 
 pub enum Action {
@@ -21,21 +30,19 @@ pub enum Action {
     Unfavorite,
 }
 
-pub async fn _favorite<R: 'static + Repository + Sync + Send>(
-    cx: Request<Context<R>>,
+pub async fn _favorite(
+    ctx: &ApplicationContext,
+    user: &User,
+    slug: &str,
     action: Action,
-) -> Result<Response, ErrorResponse> {
-    let user_id = cx.get_claims().map_err(|_| Response::new(401))?.user_id();
-    let slug: String = cx.param("slug").map_err(|_| Response::new(400))?;
-    let repository = &cx.state().repository;
+) -> ApiResult<Json<ArticleResponse>> {
+    let user = ctx.repo().get_user_by_id(user.user_id()).await?;
+    let article = ctx.repo().get_article_by_slug(slug).await?;
 
-    let user = repository.get_user_by_id(user_id)?;
-    let article = repository.get_article_by_slug(&slug)?;
     let article_view = match action {
-        Action::Favorite => user.favorite(article, repository),
-        Action::Unfavorite => user.unfavorite(article, repository),
+        Action::Favorite => user.favorite(article, ctx.repo()).await,
+        Action::Unfavorite => user.unfavorite(article, ctx.repo()).await,
     }?;
 
-    let response: ArticleResponse = article_view.into();
-    Ok(Response::new(200).body_json(&response).unwrap())
+    Ok(ArticleResponse::from(article_view).into())
 }

@@ -1,12 +1,12 @@
-use crate::middleware::ContextExt;
-use crate::{Context, ErrorResponse};
+use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::encode_token;
+use crate::errors::ApiResult;
+use crate::extractor::User;
 use crate::users::responses::UserResponse;
+use crate::{auth::encode_token, context::ApplicationContext};
 use domain::repositories::Repository;
 use std::convert::{TryFrom, TryInto};
-use tide::Response;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Request {
@@ -40,22 +40,16 @@ impl TryFrom<UpdateUserRequest> for domain::UserUpdate {
     }
 }
 
-pub async fn update_user<R: 'static + Repository + Sync + Send>(
-    mut cx: tide::Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    let update_params = cx
-        .body_json::<Request>()
-        .await
-        .map_err(|_| Response::new(400))?
-        .user;
-    let user_id = cx.get_claims().map_err(|_| Response::new(401))?.user_id();
-    let repository = &cx.state().repository;
-
-    let user = repository.get_user_by_id(user_id)?;
-    let updated_user = user.update(update_params.try_into()?, repository)?;
+pub async fn update_user(
+    ctx: Extension<ApplicationContext>,
+    user: User,
+    request: Json<Request>,
+) -> ApiResult<Json<UserResponse>> {
+    let user = ctx.repo().get_user_by_id(user.user_id()).await?;
+    let updated_user = user.update(request.0.user.try_into()?, ctx.repo()).await?;
     let token = encode_token(updated_user.id);
 
     let response = UserResponse::from((updated_user, token));
 
-    Ok(Response::new(200).body_json(&response).unwrap())
+    Ok(response.into())
 }

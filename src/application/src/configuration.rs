@@ -9,7 +9,7 @@ pub struct Application {
     pub port: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Postgres {
     pub host: String,
     pub port: usize,
@@ -24,6 +24,14 @@ impl Postgres {
             "postgres://{}:{}@{}:{}/{}",
             self.username, self.password, self.host, self.port, self.db
         )
+    }
+
+    pub fn with_db(&self, db: &str) -> Postgres {
+        let new = self.clone();
+        Postgres {
+            db: db.to_string(),
+            ..new
+        }
     }
 }
 

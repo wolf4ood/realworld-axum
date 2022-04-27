@@ -1,18 +1,16 @@
-use crate::middleware::ContextExt;
-use crate::{Context, ErrorResponse};
+use axum::{extract::Path, Extension};
 use domain::repositories::Repository;
-use tide::Response;
 
-pub async fn delete<R: 'static + Repository + Sync + Send>(
-    cx: tide::Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    let author_id = cx.get_claims().map_err(|_| Response::new(401))?.user_id();
-    let comment_id: u64 = cx.param("id").map_err(|_| Response::new(400))?;
-    let repository = &cx.state().repository;
+use crate::{context::ApplicationContext, errors::ApiResult, extractor::User};
 
-    let author = repository.get_user_by_id(author_id)?;
-    let comment = repository.get_comment(comment_id)?;
-    author.delete_comment(comment, repository)?;
+pub async fn delete(
+    ctx: Extension<ApplicationContext>,
+    user: User,
+    Path((_, comment_id)): Path<(String, u64)>,
+) -> ApiResult<()> {
+    let author = ctx.repo().get_user_by_id(user.user_id()).await?;
+    let comment = ctx.repo().get_comment(comment_id).await?;
+    author.delete_comment(comment, ctx.repo()).await?;
 
-    Ok(Response::new(200))
+    Ok(())
 }

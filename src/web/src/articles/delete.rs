@@ -1,20 +1,16 @@
-use crate::middleware::ContextExt;
-use crate::{Context, ErrorResponse};
+use axum::{extract::Path, Extension};
 use domain::repositories::Repository;
-use tide::Response;
 
-pub async fn delete_article<R: 'static + Repository + Sync + Send>(
-    cx: tide::Request<Context<R>>,
-) -> Result<Response, ErrorResponse> {
-    let slug: String = cx.param("slug").map_err(|_| Response::new(400))?;
-    let repository = &cx.state().repository;
+use crate::{context::ApplicationContext, errors::ApiResult, extractor::User};
 
-    // They have to be authenticated to perform deletions
-    let user_id = cx.get_claims().map_err(|_| Response::new(401))?.user_id();
+pub async fn delete_article(
+    ctx: Extension<ApplicationContext>,
+    user: User,
+    Path(slug): Path<String>,
+) -> ApiResult<()> {
+    let user = ctx.repo().get_user_by_id(user.user_id()).await?;
+    let article = ctx.repo().get_article_by_slug(&slug).await?;
+    user.delete(article, ctx.repo()).await?;
 
-    let user = repository.get_user_by_id(user_id)?;
-    let article = repository.get_article_by_slug(&slug)?;
-    user.delete(article, repository)?;
-
-    Ok(Response::new(200))
+    Ok(())
 }

@@ -1,22 +1,36 @@
-use async_std::task::block_on;
-use db::{connection::Repo, Repository};
+use db::Repository;
 use realworld_application::configuration::Settings;
-use std::path::PathBuf;
-use web::get_app;
-
-fn main() -> Result<(), std::io::Error> {
+use std::{net::SocketAddr, path::PathBuf};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use web2::get_app;
+#[tokio::main]
+async fn main() -> Result<(), std::io::Error> {
     let settings = Settings::new(PathBuf::default()).expect("Failed to load configuration");
-    env_logger::init();
 
-    let state = Repository(Repo::new(&settings.database.connection_string()));
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            std::env::var("RUST_LOG")
+                .unwrap_or_else(|_| "example_error_handling_and_dependency_injection=debug".into()),
+        ))
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    let state = Repository::create(settings.database.connection_string())
+        .await
+        .expect("Failed to create repository");
+
     let app = get_app(state);
-    let address = format!(
+    let address: SocketAddr = format!(
         "{}:{}",
         settings.application.host, settings.application.port
-    );
+    )
+    .parse()
+    .unwrap();
+    tracing::info!("listening on {}", address);
+    axum::Server::bind(&address)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 
-    block_on(async {
-        app.listen(address).await?;
-        Ok(())
-    })
+    Ok(())
 }

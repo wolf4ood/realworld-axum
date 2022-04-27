@@ -1,14 +1,21 @@
-#[macro_use]
-extern crate diesel;
+pub mod entity;
+mod repository;
+mod shims;
 
-pub mod connection;
-pub mod models;
-pub mod queries;
-pub mod repository;
-pub mod schema;
-pub mod shims;
-
-use diesel::PgConnection;
 pub use repository::Repository;
 
-pub type Repo = connection::Repo<PgConnection>;
+use sqlx::migrate::MigrateDatabase;
+use sqlx::PgPool;
+
+pub async fn run_migrations(url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let _ = sqlx::Any::drop_database(url).await;
+    let _ = sqlx::Any::create_database(url).await;
+    let pool = PgPool::connect(url).await.unwrap();
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("Failed to run migrations");
+
+    pool.close().await;
+    Ok(())
+}

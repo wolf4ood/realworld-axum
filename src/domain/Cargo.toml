@@ -2,7 +2,7 @@
 name = "realworld-domain"
 version = "0.1.0"
 authors = ["colinbankier <colinbankier@gmail.com>", "LukeMathWalker <rust@lpalmieri.com>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "realworld_domain"
@@ -12,15 +12,25 @@ path = "src/lib.rs"
 serde = { version= "1", features = ["derive"] }
 chrono = { version = "0.4.6", features = ["serde"] }
 log = "0.4.0"
-uuid = { version = "0.7.4", features = ["serde", "v4"] }
+uuid = { version = "0.8", features = ["serde", "v4"] }
 itertools = "0.8.2"
 thiserror = "1.0.9"
-bcrypt = "0.6.1"
+bcrypt = "0.12.1"
 anyhow = "1.0.26"
+async-trait = "0.1"
 
 [dev-dependencies]
 application = { package = "realworld-application", path = "../application"}
-db = { package = "realworld-db", path = "../db" }
-diesel = { version = "1.4", features = ["postgres", "extras", "uuidv07"] }
-r2d2 = "0.8"
+realworld-db = {  path = "../db" }
 fake = "1.2.2"
+tokio = { version = "1.0", features = ["full"] }
+futures= "0.3"
+
+[dev-dependencies.sea-orm]
+version = "^0.7.0"
+features = [
+  "macros",
+  "debug-print",
+  "runtime-tokio-native-tls",
+  "sqlx-postgres",
+]

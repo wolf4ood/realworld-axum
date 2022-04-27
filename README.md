@@ -1,17 +1,24 @@
 # ![RealWorld Example App](logo.png)
 
-> ### Rust/Tide codebase containing real world examples (CRUD, auth, advanced patterns, etc) that adheres to the [RealWorld](https://github.com/gothinkster/realworld) spec and API.
+> ### Rust/Axum/SeaORM codebase containing real world examples (CRUD, auth, advanced patterns, etc) that adheres to the [RealWorld](https://github.com/gothinkster/realworld) spec and API.
 
 [Demo](https://github.com/gothinkster/realworld)&nbsp;&nbsp;&nbsp;&nbsp;[RealWorld](https://github.com/gothinkster/realworld)
 
 # Overview
 
-This codebase was created to demonstrate a fully fledged backend application built with **Rust** and [**`tide`**](https://github.com/colinbankier/realworld-tide) including CRUD operations, authentication, routing, pagination, and more.
+This codebase was created to demonstrate a fully fledged backend application built with **Rust** and [**`axum`**](https://github.com/wolf4ood/realworld-axum) including CRUD operations, authentication, routing, pagination, and more.
+
+
+This project is a fork of [**`RealWorld Tide`**](https://github.com/colinbankier/realworld-tide) with:
+
+- module `web` rewritten with [`Axum`](https://github.com/tokio-rs/axum)
+- module `db` rewritten with [`SeaORM`](https://www.sea-ql.org/SeaORM/docs/index)
+
 
 This project attempts to achieve a clear separation between web, domain and persistence logic -
 loosely along the lines of the [ports and adapters architecture](https://en.wikipedia.org/wiki/Hexagonal_architecture_(software)).  
 These three concerns live in separate crates - `web`, `domain` and `db`.  
-`tide` is used in the `web` crate while `diesel` is the main character of the `db` crate.  
+`axum` is used in the `web` crate while `diesel` is the main character of the `db` crate.  
 The fourth crate, `application`, glues the other three together and provides the runnable binary.
 
 Each sub-crate has its own set of tests, with integration tests taking place in the `web` crate.
@@ -33,18 +40,19 @@ You just need to provide an alternative implementation of the `web` crate levera
 
 ### Prerequisites
 
-- Rust 1.39 (see [here](https://www.rust-lang.org/tools/install) for instructions)
-- Docker (see [here](https://docs.docker.com/install/) for instructions)
-- Postgres (see [here](https://www.postgresql.org/download/) for instructions)
+- Rust 1.56 (see [here](https://www.rust-lang.org/tools/install) for instructions)
+- Docker/DockerCompose (see [here](https://docs.docker.com/install/) for instructions)
+- Make (see [here](https://www.gnu.org/software/make/) for instructions)
 
 ### Setup steps
-- Install the `diesel` CLI:
+- Launch a local Postgres instance with docker-compose 
 ```bash
-cargo install diesel_cli --no-default-features --features postgres
+docker-compose up -d
 ```
-- Launch a local Postgres instance and run SQL migrations:
-```bash
-./scripts/init_db.sh
+- Run SQL migrations
+
+``` bash
+make db
 ```
 
 You are ready to go!
@@ -52,37 +60,17 @@ You are ready to go!
 ## Run tests
 Run tests, including DB integration tests
 
+
 ```bash
-# This will launch a Postgres instance in a docker container.
-# You can customise its behaviour using env variables:
-# - database name, using POSTGRES_DB
-# - user, using POSTGRES_USER
-# - password, using POSTGRES_PASSWORD
-# - port, using POSTGRES_PORT
-# 5434 is the port specified in configuration/test.yml, the test configuration file
-POSTGRES_PORT=5434 ./scripts/init_db.sh
-# Execute the tests
-./scripts/run_tests.sh
+make test
 ```
 
 ## Run app and realworld test suite
 Run the app
 ```bash
-# This will launch a Postgres instance in a docker container.
-# You can customise its behaviour using env variables:
-# - database name, using POSTGRES_DB
-# - user, using POSTGRES_USER
-# - password, using POSTGRES_PASSWORD
-# - port, using POSTGRES_PORT
-# 5433 is the port specified in configuration/development.yml, the default choice
-POSTGRES_PORT=5433 ./scripts/init_db.sh
-# Launch the application!
-cargo run
+make run
 ```
-You can pass the `--release` flag to squeeze in the last drop of performance.
 
-By default, we look for Postgres on a different port when executing tests - hence you can run the test suite
-and interact with the application locally without suffering any interference.
 
 If you want to run the "realworld" Postman tests, just execute
 ```bash

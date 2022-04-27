@@ -11,6 +11,7 @@ impl From<GetUserError> for DatabaseError {
     fn from(e: GetUserError) -> Self {
         match e {
             GetUserError::NotFound { source, .. } => source,
+            GetUserError::NotFoundByUsername { source, .. } => source,
             GetUserError::DatabaseError(e) => e,
         }
     }
@@ -21,6 +22,7 @@ impl From<GetArticleError> for DatabaseError {
         match e {
             GetArticleError::ArticleNotFound { source, .. } => source,
             GetArticleError::DatabaseError(e) => e,
+            GetArticleError::AuthorNotFound { source, .. } => source.into(),
         }
     }
 }

@@ -1,74 +1,95 @@
 mod helpers;
 
-use helpers::test_db::get_test_repo;
+use chrono::Utc;
 use helpers::{create_article, create_user, create_users};
+use realworld_domain::repositories::Repository;
+use realworld_domain::{Article, ArticleMetadata, Profile};
 
-use realworld_db::queries::favorites;
+use crate::helpers::generate::article_content;
+use realworld_tests::db::test_db;
 
-#[test]
-fn you_cannot_favorite_an_article_which_does_not_exist() {
-    let repo = get_test_repo();
-
-    let user = create_user(&repo).0;
+#[tokio::test]
+async fn you_cannot_favorite_an_article_which_does_not_exist() {
+    let db = test_db("you_cannot_favorite_an_article_which_does_not_exist").await;
+    let user = create_user(&db).await.0;
     // Slug not pointing to any article in the DB
     let article_slug = "hello";
 
-    let result = favorites::favorite(&repo, user.id, article_slug);
+    let result =
+        db.0.favorite(
+            &Article {
+                slug: article_slug.to_string(),
+                content: article_content(),
+                author: Profile {
+                    username: String::default(),
+                    bio: None,
+                    image: None,
+                },
+                metadata: ArticleMetadata {
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                },
+                favorites_count: 0,
+            },
+            &user,
+        )
+        .await;
     assert!(result.is_err());
 }
 
-#[test]
-fn you_can_favorite_an_article_twice_but_it_only_counts_for_one() {
-    let repo = get_test_repo();
+#[tokio::test]
+async fn you_can_favorite_an_article_twice_but_it_only_counts_for_one() {
+    let db = test_db("you_can_favorite_an_article_twice_but_it_only_counts_for_one").await;
 
-    let user = create_user(&repo).0;
-    let article = create_article(&repo, &user);
+    let user = create_user(&db).await.0;
+    let article = create_article(&db, &user).await;
 
-    let result = favorites::favorite(&repo, user.id, &article.slug);
+    let result = db.0.favorite(&article, &user).await;
     assert!(result.is_ok());
 
-    let result = favorites::favorite(&repo, user.id, &article.slug);
+    let result = db.0.favorite(&article, &user).await;
     assert!(result.is_ok());
 
-    assert_eq!(1, favorites::n_favorites(&repo, &article.slug).unwrap());
-    assert!(favorites::is_favorite(&repo, user.id, &article.slug).unwrap());
+    assert_eq!(1, db.0.n_favorites(&article).await.unwrap());
+    assert!(db.0.is_favorite(&article, &user).await.unwrap());
 }
 
-#[test]
-fn you_can_favorite_an_article_which_you_never_favorited() {
-    let repo = get_test_repo();
+#[tokio::test]
+async fn you_can_favorite_an_article_which_you_never_favorited() {
+    let db = test_db("you_can_favorite_an_article_which_you_never_favorited").await;
 
-    let user = create_user(&repo).0;
-    let article = create_article(&repo, &user);
+    let user = create_user(&db).await.0;
+    let article = create_article(&db, &user).await;
 
-    let result = favorites::unfavorite(&repo, user.id, &article.slug);
+    let result = db.0.unfavorite(&article, &user).await;
     assert!(result.is_ok());
 }
 
-#[test]
-fn favorites_works() {
-    let repo = get_test_repo();
+#[tokio::test]
+async fn favorites_works() {
+    let db = test_db("favorites_works").await;
 
-    let author = create_user(&repo).0;
-    let article = create_article(&repo, &author);
+    let author = create_user(&db).await.0;
+    let article = create_article(&db, &author).await;
 
     let n_fans = 10;
-    let fans = create_users(&repo, n_fans);
+    let fans = create_users(&db, n_fans).await;
 
     for (fan, _) in &fans {
-        assert!(!favorites::is_favorite(&repo, fan.id, &article.slug).unwrap());
-        favorites::favorite(&repo, fan.id, &article.slug).expect("Failed to fav article");
-        assert!(favorites::is_favorite(&repo, fan.id, &article.slug).unwrap());
+        assert!(!db.0.is_favorite(&article, &fan).await.unwrap());
+        db.0.favorite(&article, &fan)
+            .await
+            .expect("Failed to fav article");
+        assert!(db.0.is_favorite(&article, &fan).await.unwrap());
     }
 
-    assert_eq!(
-        n_fans as i64,
-        favorites::n_favorites(&repo, &article.slug).unwrap()
-    );
+    assert_eq!(n_fans as i64, db.0.n_favorites(&article).await.unwrap());
 
     for (fan, _) in &fans {
-        favorites::unfavorite(&repo, fan.id, &article.slug).expect("Failed to fav article");
+        db.0.unfavorite(&article, &fan)
+            .await
+            .expect("Failed to fav article");
     }
 
-    assert_eq!(0, favorites::n_favorites(&repo, &article.slug).unwrap());
+    assert_eq!(0, db.0.n_favorites(&article).await.unwrap());
 }
