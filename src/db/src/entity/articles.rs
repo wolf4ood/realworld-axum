@@ -2,6 +2,8 @@
 
 use sea_orm::entity::prelude::*;
 
+use crate::json::Json as ModelJson;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "articles")]
 pub struct Model {
@@ -11,9 +13,8 @@ pub struct Model {
     pub description: String,
     #[sea_orm(column_type = "Text")]
     pub body: String,
-    // TODO Enable When supported
-    // #[sea_orm(column_type = "Custom(\"array\".to_owned())")]
-    // pub tag_list: String,
+    #[sea_orm(column_type = "JsonBinary")]
+    pub tag_list: ModelJson<Vec<String>>,
     pub user_id: Uuid,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

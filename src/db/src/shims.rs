@@ -23,13 +23,13 @@ pub fn to_article(
         created_at: a.created_at.into(),
         updated_at: a.updated_at.into(),
     };
+    let mut tags = a.tag_list.0;
+    tags.sort();
     let content = realworld_domain::ArticleContent {
         title: a.title,
         description: a.description,
         body: a.body,
-        // TODO Not supported now
-        // tag_list: a.tag_list,
-        tag_list: vec![],
+        tag_list: tags,
     };
     realworld_domain::Article {
         content,

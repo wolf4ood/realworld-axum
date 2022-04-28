@@ -35,6 +35,7 @@ pub enum ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        tracing::error!("Error on request: {}", self);
         let (status, error_message) = match self {
             ApiError::Login(LoginError::NotFound) => not_found(""),
             ApiError::Login(LoginError::PasswordError(_)) => bad_request(""),

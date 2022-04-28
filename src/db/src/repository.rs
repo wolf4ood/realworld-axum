@@ -1,9 +1,16 @@
+use std::collections::HashMap;
+use std::collections::HashSet;
+
+use crate::json::Json;
 use crate::shims::to_article;
 use crate::shims::to_comment;
 use chrono::Utc;
 use realworld_domain::{Article, FavoriteOutcome};
 use sea_orm::sea_query::Expr;
+use sea_orm::DbBackend;
 use sea_orm::DeleteResult;
+use sea_orm::JoinType;
+use sea_orm::Statement;
 
 use sea_orm::FromQueryResult;
 use sea_orm::ModelTrait;
@@ -47,6 +54,7 @@ impl realworld_domain::repositories::Repository for Repository {
             updated_at: ActiveValue::Set(Utc::now().into()),
             user_id: ActiveValue::Set(author.id),
             slug: ActiveValue::Set(draft.slug()),
+            tag_list: ActiveValue::Set(Json(draft.tag_list)),
         };
         article
             .insert(&self.0)
@@ -101,10 +109,32 @@ impl realworld_domain::repositories::Repository for Repository {
 
     async fn get_articles_views(
         &self,
-        _viewer: &realworld_domain::User,
-        _articles: Vec<realworld_domain::Article>,
+        viewer: &realworld_domain::User,
+        articles: Vec<realworld_domain::Article>,
     ) -> Result<Vec<realworld_domain::ArticleView>, realworld_domain::DatabaseError> {
-        todo!()
+        let are_favorites = self.are_favorites(&articles, viewer).await?;
+        let mut articles_view = Vec::with_capacity(are_favorites.len());
+        for article in articles.iter() {
+            let author_view = self
+                .get_profile_view(viewer, &article.author.username)
+                .await?;
+
+            let favorited = are_favorites
+                .get(article.slug.as_str())
+                .cloned()
+                .unwrap_or_default();
+            let article_view = realworld_domain::ArticleView {
+                content: article.content.clone(),
+                slug: article.slug.clone(),
+                author: author_view,
+                metadata: article.metadata.clone(),
+                favorited,
+                favorites_count: article.favorites_count,
+                viewer: viewer.id,
+            };
+            articles_view.push(article_view);
+        }
+        Ok(articles_view)
     }
 
     async fn find_articles(
@@ -118,6 +148,10 @@ impl realworld_domain::repositories::Repository for Repository {
 
         if let Some(username) = query.author {
             q = q.filter(users::Column::Username.eq(username));
+        }
+
+        if let Some(tag) = query.tag {
+            q = q.filter(Expr::cust(&format!("tag_list @> '\"{}\"'", tag)));
         }
 
         let mut articles: Vec<realworld_domain::Article> = q
@@ -139,10 +173,32 @@ impl realworld_domain::repositories::Repository for Repository {
 
     async fn feed(
         &self,
-        _user: &realworld_domain::User,
+        user: &realworld_domain::User,
         _query: realworld_domain::FeedQuery,
     ) -> Result<Vec<realworld_domain::ArticleView>, realworld_domain::DatabaseError> {
-        todo!()
+        use crate::entity::articles::Entity as Articles;
+        use crate::entity::followers;
+        use crate::entity::users;
+        use sea_orm::RelationTrait;
+
+        let mut articles: Vec<realworld_domain::Article> = Articles::find()
+            .find_also_related(users::Entity)
+            .join_rev(JoinType::InnerJoin, followers::Relation::Users1.def())
+            .filter(followers::Column::FollowerId.eq(user.id))
+            .all(&self.0)
+            .await
+            .map_err(to_db_error)?
+            .into_iter()
+            .filter_map(|(article, user)| user.map(|u| (article, realworld_domain::User::from(u))))
+            .map(|(article, user)| to_article(article, user, 0))
+            .collect();
+
+        for article in articles.iter_mut() {
+            let n_fav = self.n_favorites(article).await?;
+            article.favorites_count = n_fav as u64;
+        }
+
+        self.get_articles_views(user, articles).await
     }
 
     async fn delete_article(
@@ -515,7 +571,23 @@ impl realworld_domain::repositories::Repository for Repository {
     async fn get_tags(
         &self,
     ) -> Result<std::collections::HashSet<String>, realworld_domain::DatabaseError> {
-        todo!()
+        #[derive(Debug, FromQueryResult)]
+        pub struct UniqueTag {
+            tag: String,
+        }
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"select DISTINCT tag.tag from (select jsonb_array_elements_text(tag_list) as tag from articles) as tag"#,
+            vec![],
+        );
+        let tags = UniqueTag::find_by_statement(stmt)
+            .all(&self.0)
+            .await
+            .map_err(to_db_error)?
+            .into_iter()
+            .map(|tag| tag.tag)
+            .collect::<HashSet<String>>();
+        Ok(tags)
     }
 }
 
@@ -558,6 +630,42 @@ impl Repository {
             .await
             .map(|row| row.is_some())
             .map_err(to_db_error)
+    }
+    pub async fn are_favorites<'a>(
+        &self,
+        articles: &'a [realworld_domain::Article],
+        user: &realworld_domain::User,
+    ) -> Result<HashMap<&'a str, bool>, realworld_domain::DatabaseError> {
+        use crate::entity::favorites::{self, Entity as Favorites};
+
+        let favs = Favorites::find()
+            .filter(
+                favorites::Column::ArticleId.is_in(
+                    articles
+                        .iter()
+                        .map(|article| article.slug.as_str())
+                        .collect::<Vec<&str>>(),
+                ),
+            )
+            .filter(favorites::Column::UserId.eq(user.id))
+            .all(&self.0)
+            .await
+            .map_err(to_db_error)?;
+
+        let favs_slugs = favs
+            .iter()
+            .map(|favorite| favorite.article_id.as_str())
+            .collect::<HashSet<&str>>();
+
+        let mut favorited = HashMap::new();
+        for article in articles.iter() {
+            favorited.insert(
+                article.slug.as_str(),
+                favs_slugs.contains(article.slug.as_str()),
+            );
+        }
+
+        Ok(favorited)
     }
     pub async fn is_following(
         &self,

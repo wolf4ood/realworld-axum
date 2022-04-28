@@ -1,4 +1,5 @@
 pub mod entity;
+pub mod json;
 mod repository;
 mod shims;
 

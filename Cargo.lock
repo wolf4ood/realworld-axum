@@ -1874,6 +1874,8 @@ dependencies = [
  "realworld-domain",
  "realworld-tests",
  "sea-orm",
+ "serde 1.0.136",
+ "serde_json",
  "sqlx",
  "tokio",
  "tracing",
